@@ -1,4 +1,10 @@
-"""Differentiable fuzzy classifier layers used by the reference teacher."""
+"""Differentiable fuzzy classifier layers used by the reference teacher.
+
+Membership is exp(-||A(x - c)||), an exponential (Laplace-type) kernel -- not
+exp(-||A(x - c)||^2 / 2). `rots` parameterises the off-diagonals of the
+symmetric shape matrix A; it is not a rotation and A is not constrained to be
+non-singular, so a rule can degenerate into a ridge of membership 1.
+"""
 
 import numpy as np
 import torch
@@ -51,6 +57,7 @@ class FuzzyLayer(torch.nn.Module):
         return A
 
     def forward(self, input: Tensor) -> Tensor:
+        """Returns exp(-||A(x - c)||) per rule; 1 at the centre, decaying outward."""
         batch_size = input.shape[0]
         A = torch.cat((self.get_scales_and_rot(), self.centroids), dim=2)
         transform = torch.cat((A, self.c_r), dim=1)

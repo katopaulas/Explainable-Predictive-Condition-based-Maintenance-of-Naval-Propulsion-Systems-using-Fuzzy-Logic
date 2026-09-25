@@ -8,15 +8,31 @@ from fuzzy_tree import FuzzyDecisionTree
 
 
 def stratified_local_neighbourhood(X, query, teacher_labels, k=180):
-    """Local neighbourhood: nearest k/2 samples from each teacher-predicted class."""
-    per_class = k // 2
-    selected = []
+    """Local neighbourhood: nearest k/n_classes samples from each predicted class."""
+    labels = np.unique(teacher_labels)
+    per_class = max(1, k // len(labels))
     distances = np.linalg.norm(X - query, axis=1)
-    for label in (0, 1):
+    selected = []
+    for label in labels:
         candidates = np.flatnonzero(teacher_labels == label)
-        nearest = candidates[np.argsort(distances[candidates])[:min(per_class, len(candidates))]]
-        selected.append(nearest)
+        selected.append(candidates[np.argsort(distances[candidates])[:per_class]])
     return np.concatenate(selected)
+
+
+def locality_kernel(X, query):
+    """Optional extension, unused by default.
+
+    The paper weights every neighbour equally (Sec. 2.2, Eq. 5), so the default
+    pipeline passes no sample_weight. Supplying this kernel to
+    FuzzyDecisionTree.fit turns the surrogate into a LIME-style distance-weighted
+    fit; support and confidence then become kernel-weighted rather than Eq. 5
+    quantities. Normalised to mean 1 so min_support keeps its sample-count
+    meaning.
+    """
+    d = np.linalg.norm(X - query, axis=1)
+    width = np.median(d) + 1e-12
+    w = np.exp(-(d / width) ** 2)
+    return w / w.mean()
 
 
 def train_dummy_model(X_train, y_train, input_size, epochs=150):
@@ -31,6 +47,19 @@ def train_dummy_model(X_train, y_train, input_size, epochs=150):
         loss.backward()
         optimizer.step()
     return teacher
+
+
+def logistic_baseline(X_train, y_train, X_test, y_test, epochs=400):
+    """Linear reference point for the teacher's accuracy."""
+    model = torch.nn.Linear(X_train.shape[1], 2)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+    x, y = torch.tensor(X_train), torch.tensor(y_train)
+    for _ in range(epochs):
+        optimizer.zero_grad()
+        torch.nn.functional.cross_entropy(model(x), y).backward()
+        optimizer.step()
+    with torch.no_grad():
+        return (model(torch.tensor(X_test)).argmax(1).numpy() == y_test).mean()
 
 
 def main():
@@ -48,7 +77,11 @@ def main():
     with torch.no_grad():
         test_logits = teacher(torch.tensor(X_scaled[test_idx]))
         accuracy = (test_logits.argmax(1).numpy() == y[test_idx]).mean()
-    print(f"Teacher test accuracy: {accuracy:.3f}")
+    baseline = logistic_baseline(X_scaled[train_idx], y[train_idx],
+                                 X_scaled[test_idx], y[test_idx])
+    print(f"Teacher test accuracy: {accuracy:.3f}  "
+          f"(logistic-regression baseline {baseline:.3f}; this synthetic task is "
+          f"linear by construction, so the baseline is expected to be competitive)")
 
     # Explain one test point: use a class-stratified local neighbourhood, then fit
     # an FDT to the teacher's decisions within that neighbourhood.
@@ -62,21 +95,32 @@ def main():
     local_idx = train_idx[local_neighbourhood_positions]
     local_teacher_labels = train_teacher_labels[local_neighbourhood_positions]
 
+    banned = ("lever_position",)
     tree = FuzzyDecisionTree(
         max_depth=2,
         feature_names=feature_names,
-        banned_features=("lever_position",),
+        banned_features=banned,
     )
     tree.fit(X_scaled[local_idx], local_teacher_labels)
+    fidelity = (tree.predict(X_scaled[local_idx]) == local_teacher_labels).mean()
     print(f"Query prediction: {'degraded' if query_prediction else 'healthy'}")
-    print("Local fuzzy rules:")
-    for rule in tree.extract_rules(feature_names):
-        print(" ", rule)
+    print(f"Surrogate fidelity to the teacher on the neighbourhood: {fidelity:.3f}")
+    print("Local fuzzy rules (support and confidence are Eq. 5 path firing strengths "
+          "over the neighbourhood; 'fires' = strength for this query):")
+    rules = tree.extract_rules(feature_names, query=X_scaled[query_index])
+    firing = [float(r.split("fires=")[1].rstrip("]")) for r in rules]
+    for rule, f in zip(rules, firing):
+        print(f"  {'->' if f == max(firing) else '  '} {rule}")
 
-    query = torch.tensor(X_scaled[query_index:query_index + 1], requires_grad=True)
-    teacher(query)[0, query_prediction].backward()
-    saliency = np.abs(query.grad.numpy()[0])
-    print("Gradient saliency:", dict(zip(feature_names, np.round(saliency, 3))))
+    query = torch.tensor(X_scaled[query_index:query_index + 1])
+    eq3 = teacher.saliency_probability(query, query_prediction)[0].numpy()
+    eq4 = teacher.saliency_rule_activation(query, k=3)[0].numpy()
+    print("Saliency (gradients w.r.t. standardised inputs, i.e. per standard deviation "
+          "of each feature; * = excluded from tree splits):")
+    print(f"   {'feature':<16}{'Eq.3 |dp/dx|':>14}{'Eq.4 top-3 rules':>19}")
+    for i in np.argsort(-eq3):
+        star = "*" if feature_names[i] in banned else " "
+        print(f"   {feature_names[i] + star:<16}{eq3[i]:>14.4f}{eq4[i]:>19.4f}")
 
 
 if __name__ == "__main__":
