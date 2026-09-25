@@ -13,7 +13,7 @@ The example generates a small synthetic propulsion-like dataset, trains the teac
 
 Each nontrivial rule reports its firing strength for the query. Support is the sum of path firing strengths across neighbours; confidence is the fraction of that support agreeing with the rule's predicted class. These reported statistics exclude the class-balancing weights used for fitting, so confidence can fall below `1/n_classes`. They describe agreement with the teacher in the selected neighbourhood, not physical reliability or population-wide precision. Prediction aggregates contributions from all leaves.
 
-Teacher test accuracy is printed before the per-sample reports. Neighbourhood training fidelity measures agreement on the samples used to fit the tree. Query agreement is reported separately for each sample and across the test set; disagreements are explicitly flagged.
+Teacher test accuracy is printed before the per-sample reports. Neighbourhood training fidelity measures agreement on the samples used to fit the tree. Query agreement is reported separately for each sample and across the test set.
 
 Each leaf contributes its entire path firing strength only to its stated class. The class with the largest summed strength wins; confidence does not weight this vote. Same-class linguistic rules can be merged by adding their firing strengths without changing the prediction. `predict_proba()` returns normalized firing scores, not calibrated probabilities. Printed strengths retain enough precision to reconstruct those scores up to floating-point rounding. Confidence remains an empirical neighbourhood statistic, even when class balancing changes the class chosen at a leaf.
 
