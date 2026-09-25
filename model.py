@@ -59,9 +59,10 @@ class FuzzyTeacher(nn.Module):
     def firing_strength(self, x):
         """Total rule activation per sample.
 
-        The normalisation inside the head divides this away, so a point far from
-        every rule still produces finite-looking logits (they collapse towards 0
-        and argmax then returns an arbitrary class). Use this as the
-        out-of-distribution / abstention signal.
+        Above the normalization epsilon, relative activations determine the
+        output; a dominant rule makes it approach that rule's consequences.
+        Only when total activation is negligible relative to the epsilon does
+        the output approach zero. This diagnostic is not a validated
+        out-of-distribution detector.
         """
         return self.fuzzy_layer(self.feature_extractor(x)).sum(-1)

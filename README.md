@@ -13,7 +13,11 @@ The example generates a small synthetic propulsion-like dataset, trains the teac
 
 Each nontrivial rule reports its firing strength for the query. Support is the sum of path firing strengths across neighbours; confidence is the fraction of that support agreeing with the rule's predicted class. These reported statistics exclude the class-balancing weights used for fitting, so confidence can fall below `1/n_classes`. They describe agreement with the teacher in the selected neighbourhood, not physical reliability or population-wide precision. Prediction aggregates contributions from all leaves.
 
-Teacher test accuracy is printed before the per-sample reports. The reported local FDT fidelity is measured on the same neighbourhood used to fit the tree.
+Teacher test accuracy is printed before the per-sample reports. Neighbourhood training fidelity measures agreement on the samples used to fit the tree. Query agreement is reported separately for each sample and across the test set; disagreements are explicitly flagged.
+
+Each leaf contributes its entire path firing strength only to its stated class. The class with the largest summed strength wins; confidence does not weight this vote. Same-class linguistic rules can be merged by adding their firing strengths without changing the prediction. `predict_proba()` returns normalized firing scores, not calibrated probabilities. Printed strengths retain enough precision to reconstruct those scores up to floating-point rounding. Confidence remains an empirical neighbourhood statistic, even when class balancing changes the class chosen at a leaf.
+
+Feature attributions are printed in descending gradient magnitude with four decimal places.
 
 ## Contents
 
@@ -54,9 +58,13 @@ For parent entropy `H` and best candidate information gain `G`, a split must sat
 
 Larger thresholds suppress weak splits and may leave only the root. Smaller thresholds allow more splits but can fit noise; lowering them does not guarantee a useful explanation. A root-only tree can also result from constant or uninformative features, a single class, excluded features, depth or sample limits, or post-pruning. In particular, `min_support` can collapse a split when all its children are leaves and any child has insufficient fuzzy support. `min_confidence` is a diagnostic threshold, not a pruning guarantee.
 
+`min_samples` compares class-balanced fuzzy mass, rather than a count of distinct samples. Each feature can be used only once along a path. Partitions use the full selected neighbourhood at every depth, giving each linguistic term a consistent meaning across branches. Neighbourhood size and class stratification affect how local an explanation is and should be chosen for the application. Membership plots refer only to surviving split features.
+
 A root-only `IF TRUE` rule is a valid fallback: it means no conditional explanation survived the chosen settings. Inspect `tree.get_pruning_report()` and the neighbourhood before changing thresholds. If `root_was_leaf` is true, construction stopped before creating a split; otherwise the report records the pruning collapses.
 
 ## Future extensions
+
+The hooks below already exist in the FDT; future work is to evaluate them in the explanation pipeline. Both are unused by the default demo.
 
 - Distance-weighted local surrogates: use a distance kernel through `FuzzyDecisionTree.fit(..., sample_weight=...)` to emphasize neighbours closest to the explained sample.
 - Robust fuzzy partitions: initialize fuzzy-set ranges from quantiles rather than local minima and maxima to reduce sensitivity to extreme observations.

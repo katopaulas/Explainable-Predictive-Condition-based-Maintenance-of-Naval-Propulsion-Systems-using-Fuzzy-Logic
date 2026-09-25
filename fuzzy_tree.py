@@ -231,7 +231,7 @@ class FuzzyDecisionTree:
             parent_entropy = weighted_entropy(y, w)
 
             for f in range(n_features):
-                if f in features_used or self._fname(f) in self.banned_features: # avoid immediate reuse
+                if f in features_used or self._fname(f) in self.banned_features: # no reuse along a path
                     continue
                 f_name = self._fname(f)
                 x_local_col = X[:, f]
@@ -260,8 +260,6 @@ class FuzzyDecisionTree:
                     best_score = score
                     best_f = f
                     best_centers, best_sigmas = centers, sigmas
-                    self.fuzzy_params = getattr(self, "fuzzy_params", {})
-                    self.fuzzy_params[best_f] = (best_centers, best_sigmas)
 
             if best_f is None or best_score < self.min_gain or (parent_entropy > 1e-12 and (best_score / parent_entropy) < self.min_gain_ratio):
                 stop_condition = True
@@ -418,6 +416,17 @@ class FuzzyDecisionTree:
             report["root_was_leaf"] = root_was_leaf
             self.pruning_report_ = report
 
+            # Plot only partitions used by surviving splits; also clear stale
+            # candidates and partitions left over from previous fits.
+            self.fuzzy_params = {}
+            def collect(node):
+                if node.label is not None:
+                    return
+                self.fuzzy_params[node.feature] = (node.centers, node.sigmas)
+                for _, child in node.children:
+                    collect(child)
+            collect(self.root)
+
             if self.verbose:
                 print(
                     "Pruning: "
@@ -444,12 +453,7 @@ class FuzzyDecisionTree:
         strength = current membership weight reaching this node
         """
         if node.label is not None:
-            # Leaf: distribute the strength over the classes present in the leaf,
-            # not onto the winner alone.
-            total = sum(node.class_masses.values())
-            if total < 1e-12:
-                return {node.label: strength}
-            return {cls: strength * m / total for cls, m in node.class_masses.items()}
+            return {node.label: strength}
 
         # Compute memberships for this feature
         mu = np.array([
@@ -461,7 +465,7 @@ class FuzzyDecisionTree:
         votes = {}
         for k, child_node in node.children:
             child_strength = strength * mu[k]
-            if child_strength > 1e-6:
+            if child_strength > 0:
                 child_votes = self._predict_sample(x, child_node, child_strength)
                 for cls, v in child_votes.items():
                     votes[cls] = votes.get(cls, 0) + v
@@ -469,31 +473,20 @@ class FuzzyDecisionTree:
     
 
     def predict_proba(self, X):
-        """Aggregate leaf activations into a class distribution.
+        """Normalized firing scores, not calibrated class probabilities.
 
-        The paper states only that "final predictions are determined by
-        aggregating the firing strength of the activated tree nodes", which does
-        not uniquely determine the aggregation. Three readings are consistent
-        with that sentence, writing a_l(x) for the firing strength of leaf l:
-
-          A  score(c) = sum_l a_l(x) * P(c | l)          <- implemented here
-          B  score(c) = sum_{l: label(l)=c} a_l(x)       most literal reading
-          C  score(c) = sum_{l: label(l)=c} a_l(x)*p(R_l)
-
-        P(c | l) at c = label(l) is exactly Eq. 5's p(R_l), so C is A with the
-        minority-class mass discarded and is therefore not a distribution. A is
-        used because it is the only one of the three that normalises to a proper
-        posterior, and because A, B and C coincide exactly when every leaf is
-        pure -- they differ only on impure leaves. That difference is not small:
-        over 30 query neighbourhoods A and B disagree on ~10.6% of points (worst
-        case 19.4%) and reach 0.968 vs 0.897 fidelity to the teacher.
-
-        This choice is an interpretation, not a result derived from the paper.
+        Each leaf votes only for its stated class: score(c) is the sum of
+        path firing strengths for leaves labelled c. Confidence describes
+        neighbourhood agreement and does not multiply the vote. Merging rules
+        with the same consequent preserves scores by adding their strengths.
+        This is the demo's explicit firing-aggregation convention.
         """
         proba_list = []
         for x in X:
             votes = self._predict_sample(x, self.root)
-            total = sum(votes.values()) + 1e-12
+            total = sum(votes.values())
+            if not np.isfinite(total) or total <= 0:
+                raise ValueError("No valid FDT activation for this sample; check inputs and neighbourhood coverage")
             # normalize to sum=1
             proba = {cls: votes.get(cls, 0) / total for cls in self.classes_}
             proba_list.append(proba)
@@ -643,14 +636,15 @@ class FuzzyDecisionTree:
             # degenerate only root case
             _, supp, mass, _ = list(structured_rules.values())[0][0]
             conf = mass / (supp + 1e-12)
-            return [f"IF TRUE THEN class = {self.root.label} [support={supp:.2f}, confidence={conf:.2f}]"]
+            firing = ", fires=1" if query is not None else ""
+            return [f"IF TRUE THEN class = {self.root.label} [support={supp:.2f}, confidence={conf:.2f}{firing}]"]
         # Flatten for output
         for label, rule_list in structured_rules.items():
             for conds, supp, mass, fire in rule_list:
                 conf = mass / (supp + 1e-12)
                 stats = f"support={supp:.2f}, confidence={conf:.2f}"
                 if query is not None:
-                    stats += f", fires={fire:.2f}"
+                    stats += f", fires={fire:.17g}"
                 rules.append(f"IF {' AND '.join(conds)} THEN class = {label} [{stats}]")
                 
         return rules

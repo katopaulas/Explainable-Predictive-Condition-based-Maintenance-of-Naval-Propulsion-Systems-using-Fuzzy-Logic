@@ -79,17 +79,23 @@ def main():
     print(f"Teacher test accuracy: {(test_predictions == y[test_idx]).mean():.3f}")
 
     banned = ("lever_position",)
+    query_matches = 0
     for position, (sample_index, query, true_label, teacher_label) in enumerate(
         zip(test_idx, X_test, y[test_idx], test_predictions), start=1
     ):
         report = explain_test_sample(
             teacher, X_train, train_teacher_labels, query, feature_names, banned
         )
+        agrees = bool(report["tree_prediction"] == teacher_label)
+        query_matches += agrees
         print(f"\nTest sample {position}/{len(test_idx)} (index={sample_index})")
         print(f"  true class={true_label}, teacher class={teacher_label}, "
               f"FDT class={report['tree_prediction']}, "
-              f"local FDT fidelity={report['fidelity']:.3f}, "
+              f"neighbourhood training fidelity={report['fidelity']:.3f}, "
               f"neighbours={report['neighbourhood_size']}")
+        print(f"  Query agreement with teacher: {agrees}")
+        if not agrees:
+            print("  FDT disagrees at this query; these rules describe the surrogate's decision.")
         print("  Feature attributions (Eq. 3 |dY/dx|):")
         for i in np.argsort(-report["saliency"]):
             marker = "*" if feature_names[i] in banned else ""
@@ -97,6 +103,9 @@ def main():
         print("  FDT rules (support, confidence, and query firing strength):")
         for rule in report["rules"]:
             print(f"    {rule}")
+
+    print(f"\nQuery agreement: {query_matches}/{len(test_idx)} "
+          f"({query_matches / len(test_idx):.3%})")
 
 
 if __name__ == "__main__":
