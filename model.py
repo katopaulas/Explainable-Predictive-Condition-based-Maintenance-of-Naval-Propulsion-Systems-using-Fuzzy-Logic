@@ -37,42 +37,24 @@ class FuzzyTeacher(nn.Module):
     def forward(self, x):
         return self.pred_layer(self.fuzzy_layer(self.feature_extractor(x)))
 
-    def saliency_probability(self, x, target=None):
-        """Eq. 3: S_i(x) = |d p_T(y_l | x) / d x_i|.
+    def saliency_gradient(self, x, target=None):
+        """Eq. 3 standard-gradient saliency, ``|dY / dx|``.
 
-        p_T is the softmax over the defuzzified outputs of Eq. 2, not the raw
-        output itself. Returns one row per sample, in the units of x: with the
-        standardised pipeline of example.py that is "per standard deviation of
-        that feature", which is what makes the components comparable.
-
-        Requires eval() so batch normalisation does not couple samples.
+        ``Y`` is the selected defuzzified model output. The returned gradients
+        are in the units of ``x``; in ``example.py`` that is per training-set
+        standard deviation. Call this method after ``eval()``.
         """
         x = x.detach().clone().requires_grad_(True)
-        p = torch.softmax(self(x), dim=1)
+        output = self(x)
         if target is None:
-            target = p.argmax(1)
-        target = torch.as_tensor(target).reshape(-1, 1)
-        p.gather(1, target).sum().backward()
-        return x.grad.abs()
-
-    def saliency_rule_activation(self, x, k=3):
-        """Eq. 4: S~_i(x) = sum_{c in F_k} |d mu_c(f(x)) / d x_i|.
-
-        F_k is the set of k fuzzy rules with the highest membership mu_c(f(x)).
-        Gradients are taken with respect to the input x, so they propagate back
-        through the feature extractor f; same units as `saliency_probability`.
-
-        Requires eval() so batch normalisation does not couple samples.
-        """
-        x = x.detach().clone().requires_grad_(True)
-        mu = self.fuzzy_layer(self.feature_extractor(x))
-        top = mu.topk(min(k, mu.shape[1]), dim=1).indices
-        saliency = torch.zeros_like(x)
-        for j in range(top.shape[1]):
-            grad, = torch.autograd.grad(mu.gather(1, top[:, j:j + 1]).sum(), x,
-                                        retain_graph=True)
-            saliency = saliency + grad.abs()
-        return saliency.detach()
+            target = output.argmax(1)
+        target = torch.as_tensor(target, device=output.device, dtype=torch.long)
+        if target.ndim == 0:
+            target = target.expand(output.shape[0])
+        if target.shape != (output.shape[0],):
+            raise ValueError("target must be a scalar or one class index per sample")
+        gradient, = torch.autograd.grad(output.gather(1, target[:, None]).sum(), x)
+        return gradient.abs()
 
     def firing_strength(self, x):
         """Total rule activation per sample.

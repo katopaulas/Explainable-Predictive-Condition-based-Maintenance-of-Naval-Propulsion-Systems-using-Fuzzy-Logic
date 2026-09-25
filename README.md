@@ -11,11 +11,11 @@ pip install -r requirements.txt
 python example.py
 ```
 
-The example generates a small synthetic propulsion-like dataset, trains the teacher, predicts one query point, selects a class-stratified local neighbourhood using the teacher's predicted classes, fits a fuzzy decision tree, and prints local rules plus input-gradient saliency. No distance kernel is applied by default. Operational variables to exclude from tree splits are supplied through the tree constructor (`banned_features`).
+The example generates a small synthetic propulsion-like dataset, trains the teacher, predicts the test set, and then explains every test sample. For each sample it selects a class-stratified local neighbourhood using the teacher's predicted classes, fits a fuzzy decision tree, computes gradient feature attributions, and prints the local FDT rules with their support, confidence, and query firing strength. Operational variables to exclude from tree splits are supplied through the tree constructor (`banned_features`).
 
 Each nontrivial rule reports its firing strength for the query. Support is the sum of path firing strengths across neighbours; confidence is the fraction of that support agreeing with the rule's predicted class. These reported statistics exclude the class-balancing weights used for fitting, so confidence can fall below `1/n_classes`. They describe agreement with the teacher in the selected neighbourhood, not physical reliability or population-wide precision. The strongest firing rule is highlighted, but prediction aggregates contributions from all leaves.
 
-Teacher test accuracy is printed alongside a logistic-regression baseline. The reported surrogate fidelity is training fidelity on the same neighbourhood used to fit the tree; it is not an independent evaluation. When adapting the demo, also check agreement at the query and on held-out nearby samples.
+Teacher test accuracy is printed before the per-sample reports. The reported local FDT fidelity is measured on the same neighbourhood used to fit the tree.
 
 ## Contents
 
@@ -35,7 +35,7 @@ This is a compact, runnable reference implementation, not the full experimental 
 
 Defaults follow the paper: Gaussian set centres are placed by linear interpolation between the minimum and maximum feature values of the local neighbourhood (Sec. 2.2), and rule support and confidence are the Eq. 5 path firing strengths over that neighbourhood, with every neighbour weighted equally.
 
-Both saliency definitions are implemented separately on `FuzzyTeacher`: `saliency_probability` is Eq. 3, the gradient of the softmax probability (not of the Eq. 2 defuzzified output), and `saliency_rule_activation` is Eq. 4, the summed absolute gradients of the top-k rule activations. Both return gradients in the units of the model input, which in this pipeline is standardised, so components are per standard deviation of each feature.
+`FuzzyTeacher.saliency_gradient` implements Eq. 3, the absolute gradient of the selected defuzzified model output with respect to the input features. In this pipeline, inputs are standardised, so components are measured per training-set standard deviation of each feature. Eq. 4 in the paper defines rule support; it is reported for each extracted FDT rule.
 
 ## Split thresholds and root-only trees
 
