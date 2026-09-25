@@ -67,3 +67,4 @@ The documented synthetic example runs end to end. Adapting it to another dataset
 ## Citation
 
 Please cite the accompanying paper when using this code.
+D. Kalogeropoulos, G. Sovatzidi, and D. K. Iakovidis, “Explainable neuro-fuzzy prediction for trustworthy decision-making in maritime,” in Proc. 34th Eur. Signal Process. Conf. (EUSIPCO), Bruges, Belgium, 2026, pp. 2601–XXXX
