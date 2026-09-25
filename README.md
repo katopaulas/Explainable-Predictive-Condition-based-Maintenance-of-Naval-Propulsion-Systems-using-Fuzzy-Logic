@@ -1,8 +1,6 @@
 # Explainable fuzzy predictive maintenance — minimal reference
 
-Minimal research demo accompanying *Explainable Predictive Condition-based Maintenance of Naval Propulsion Systems using Fuzzy Logic*. This is intentionally small example code for researchers to read and adapt, not a production-ready package or the full experimental implementation.
-
-It contains a small residual neural-network teacher with a differentiable fuzzy classifier head, and a local fuzzy decision tree that produces IF–THEN rules for an individual prediction.
+Minimal research demo accompanying *Explainable Neuro-Fuzzy Prediction for Trustworthy Decision-Making in Maritime*. It implements the paper's core building blocks: a small residual neural network with a differentiable fuzzy classifier head and a local fuzzy decision tree that produces IF–THEN rules for individual predictions. It is intended for research and adaptation, not as a production-ready package or the full experimental implementation.
 
 ## Run
 
@@ -13,7 +11,7 @@ python example.py
 
 The example generates a small synthetic propulsion-like dataset, trains the teacher, predicts the test set, and then explains every test sample. For each sample it selects a class-stratified local neighbourhood using the teacher's predicted classes, fits a fuzzy decision tree, computes gradient feature attributions, and prints the local FDT rules with their support, confidence, and query firing strength. Operational variables to exclude from tree splits are supplied through the tree constructor (`banned_features`).
 
-Each nontrivial rule reports its firing strength for the query. Support is the sum of path firing strengths across neighbours; confidence is the fraction of that support agreeing with the rule's predicted class. These reported statistics exclude the class-balancing weights used for fitting, so confidence can fall below `1/n_classes`. They describe agreement with the teacher in the selected neighbourhood, not physical reliability or population-wide precision. The strongest firing rule is highlighted, but prediction aggregates contributions from all leaves.
+Each nontrivial rule reports its firing strength for the query. Support is the sum of path firing strengths across neighbours; confidence is the fraction of that support agreeing with the rule's predicted class. These reported statistics exclude the class-balancing weights used for fitting, so confidence can fall below `1/n_classes`. They describe agreement with the teacher in the selected neighbourhood, not physical reliability or population-wide precision. Prediction aggregates contributions from all leaves.
 
 Teacher test accuracy is printed before the per-sample reports. The reported local FDT fidelity is measured on the same neighbourhood used to fit the tree.
 
@@ -50,7 +48,7 @@ For parent entropy `H` and best candidate information gain `G`, a split must sat
 
 Larger thresholds suppress weak splits and may leave only the root. Smaller thresholds allow more splits but can fit noise; lowering them does not guarantee a useful explanation. A root-only tree can also result from constant or uninformative features, a single class, excluded features, depth or sample limits, or post-pruning. In particular, `min_support` can collapse a split when all its children are leaves and any child has insufficient fuzzy support. `min_confidence` is a diagnostic threshold, not a pruning guarantee.
 
-A root-only `IF TRUE` rule is a valid fallback: it means no conditional explanation survived the chosen settings. Inspect `tree.get_pruning_report()` and the neighbourhood before changing thresholds. If `root_was_leaf` is true, construction stopped before creating a split; otherwise the report records the pruning collapses. The current demo's highlighting code expects a `fires=` field, which root-only rules do not include: when adapting to data that produces this case, print the fallback rule directly rather than parsing that field.
+A root-only `IF TRUE` rule is a valid fallback: it means no conditional explanation survived the chosen settings. Inspect `tree.get_pruning_report()` and the neighbourhood before changing thresholds. If `root_was_leaf` is true, construction stopped before creating a split; otherwise the report records the pruning collapses.
 
 ## Citation
 
