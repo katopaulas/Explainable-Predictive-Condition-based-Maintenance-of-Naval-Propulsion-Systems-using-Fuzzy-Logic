@@ -31,9 +31,15 @@ This is a compact, runnable reference implementation, not the full experimental 
 
 ## Correspondence with the paper
 
-Defaults follow the paper: Gaussian set centres are placed by linear interpolation between the minimum and maximum feature values of the local neighbourhood (Sec. 2.2), and rule support and confidence are the Eq. 5 path firing strengths over that neighbourhood, with every neighbour weighted equally.
+The implementation follows the explainability workflow presented in *Explainable Neuro-Fuzzy Prediction for Trustworthy Decision-Making in Maritime*:
 
-`FuzzyTeacher.saliency_gradient` implements Eq. 3, the absolute gradient of the selected defuzzified model output with respect to the input features. In this pipeline, inputs are standardised, so components are measured per training-set standard deviation of each feature. Eq. 4 in the paper defines rule support; it is reported for each extracted FDT rule.
+- The teacher combines a residual neural feature extractor with a differentiable fuzzy classifier head. Its membership function is $\mu_{f_i}(\mathbf{u}) = \exp(-\|A_{f_i}\mathbf{u}+b_{f_i}\|_2)$, and its defuzzification layer uses normalized rule activations.
+- For each test sample, the teacher produces a prediction and a class-stratified k-nearest local neighbourhood is selected from the training set.
+- A shallow FDT is fitted to the teacher predictions in that local neighbourhood. Gaussian fuzzy-set centres are initialized by linear interpolation between the local minimum and maximum of each feature. Splits use weighted fuzzy entropy and the tree is pruned after fitting.
+- Feature attribution uses the standard-gradient saliency map in Eq. 3, $E_{\mathrm{grad}}(\mathbf{x}) = |\partial Y / \partial \mathbf{x}|$. The demo reports gradients of the selected defuzzified teacher output with respect to standardized input features.
+- Each root-to-leaf path is reported as a fuzzy IF–THEN rule. Rule support and confidence follow Eqs. 4–5: $s(R_i)=\sum_{\mathbf{x}\in D}\alpha_{c_i}(\mathbf{x})$ and $p(R_i)=\sum_{\mathbf{x}\in D}\alpha_{c_i}(\mathbf{x}\mid\hat y=K) / s(R_i)$.
+
+The code is a compact reference implementation. Tree depth, split thresholds, class balancing, neighbourhood size, and the aggregation of leaf activations are implementation settings that can be adapted for a different dataset or evaluation protocol.
 
 ## Split thresholds and root-only trees
 
@@ -50,7 +56,13 @@ Larger thresholds suppress weak splits and may leave only the root. Smaller thre
 
 A root-only `IF TRUE` rule is a valid fallback: it means no conditional explanation survived the chosen settings. Inspect `tree.get_pruning_report()` and the neighbourhood before changing thresholds. If `root_was_leaf` is true, construction stopped before creating a split; otherwise the report records the pruning collapses.
 
+## Future extensions
+
+- Distance-weighted local surrogates: use a distance kernel through `FuzzyDecisionTree.fit(..., sample_weight=...)` to emphasize neighbours closest to the explained sample.
+- Robust fuzzy partitions: initialize fuzzy-set ranges from quantiles rather than local minima and maxima to reduce sensitivity to extreme observations.
+
 ## Citation
 
 Please cite the accompanying paper when using this code.
+
 D. Kalogeropoulos, G. Sovatzidi, and D. K. Iakovidis, “Explainable neuro-fuzzy prediction for trustworthy decision-making in maritime,” in Proc. 34th Eur. Signal Process. Conf. (EUSIPCO), Bruges, Belgium, 2026, pp. 2601–2605.
