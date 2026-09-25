@@ -1,6 +1,10 @@
 # Explainable fuzzy predictive maintenance — minimal reference
 
-Minimal research demo accompanying *Explainable Neuro-Fuzzy Prediction for Trustworthy Decision-Making in Maritime*. It implements the paper's core building blocks: a small residual neural network with a differentiable fuzzy classifier head and a local fuzzy decision tree that produces IF–THEN rules for individual predictions. It is intended for research and adaptation, not as a production-ready package or the full experimental implementation.
+Minimal research demo accompanying *Explainable Neuro-Fuzzy Prediction for Trustworthy Decision-Making in Maritime*. Accepted in European Signal Processing Conference (EUSIPCO).
+
+
+
+It implements the paper's core building blocks: a small residual neural network with a differentiable fuzzy classifier head and a local fuzzy decision tree that produces IF–THEN rules for individual predictions. It is intended for research and adaptation, not as a production-ready package or the full experimental implementation.
 
 ## Run
 
@@ -15,7 +19,7 @@ Each nontrivial rule reports its firing strength for the query. Support is the s
 
 Teacher test accuracy is printed before the per-sample reports. Neighbourhood training fidelity measures agreement on the samples used to fit the tree. Query agreement is reported separately for each sample and across the test set.
 
-Each leaf contributes its entire path firing strength only to its stated class. The class with the largest summed strength wins; confidence does not weight this vote. Same-class linguistic rules can be merged by adding their firing strengths without changing the prediction. `predict_proba()` returns normalized firing scores, not calibrated probabilities. Printed strengths retain enough precision to reconstruct those scores up to floating-point rounding. Confidence remains an empirical neighbourhood statistic, even when class balancing changes the class chosen at a leaf.
+Each leaf contributes its entire path firing strength only to its stated class. The class with the largest summed strength wins; confidence does not weight this vote. Same-class linguistic rules can be merged by adding their firing strengths without changing the prediction. `predict_proba()` returns normalized firing scores, not calibrated probabilities. Printed strengths are rounded to six decimal places, which reconstructs those scores to the same precision. Confidence remains an empirical neighbourhood statistic, even when class balancing changes the class chosen at a leaf.
 
 Feature attributions are printed in descending gradient magnitude with four decimal places.
 
@@ -27,7 +31,7 @@ Feature attributions are printed in descending gradient magnitude with four deci
 - `synthetic_data.py` — deterministic synthetic data used only for the example.
 - `example.py` — the complete training and explanation pipeline.
 
-The optional plotting helpers in `fuzzy_tree.py` require Matplotlib and Graphviz. They are not included in `requirements.txt`, because they are not needed for the example.
+The optional plotting helpers in `fuzzy_tree.py` require Matplotlib and Graphviz. They are not included in `requirements.txt`, because they are not needed for the example. (`plot_feature_memberships` writes to a hardcoded `./outputs/plots/memberships/`, which must already exist.)
 
 ## Scope
 
@@ -67,7 +71,7 @@ A root-only `IF TRUE` rule is a valid fallback: it means no conditional explanat
 The hooks below already exist in the FDT; future work is to evaluate them in the explanation pipeline. Both are unused by the default demo.
 
 - Distance-weighted local surrogates: use a distance kernel through `FuzzyDecisionTree.fit(..., sample_weight=...)` to emphasize neighbours closest to the explained sample.
-- Robust fuzzy partitions: initialize fuzzy-set ranges from quantiles rather than local minima and maxima to reduce sensitivity to extreme observations.
+- Robust fuzzy partitions: initialize fuzzy-set ranges from quantiles rather than local minima and maxima to reduce sensitivity to extreme observations. `partition_quantile` trims the interpolation bounds; a richer variant that places centres at quantiles and derives each sigma from centre spacing is kept commented out above `get_fuzzy_sets` as a starting point.
 
 ## Citation
 

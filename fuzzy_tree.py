@@ -118,41 +118,45 @@ class FuzzyDecisionTree:
     def _set_label(self, k):
         return self.get_linguistic_labels(self.n_partitions)[k]
 
-    def get_fuzzy_sets_adaptive_quantiles(self, X_column, feature_idx, feature_name='', plot=False):
-        n_sets = self.n_partitions
-        x = np.asarray(X_column)
-
-        if n_sets == 1:
-            c = np.median(x)
-            s = np.std(x) + 1e-6
-            return [c], np.array([s])
-
-        # centers at quantiles (more where data are)
-        qs = np.linspace(0, 1, n_sets)
-        centers = np.quantile(x, qs)
-
-        # sigma per center from neighbor spacing
-        # (avoid zero spacing when quantiles repeat due to ties)
-        centers = np.unique(centers)
-        if len(centers) < n_sets:
-            # fallback: spread evenly if too many ties
-            c_min, c_max = x.min(), x.max()
-            centers = np.linspace(c_min, c_max, n_sets)
-
-        centers = np.asarray(centers)
-        deltas = np.diff(centers)
-        deltas = np.maximum(deltas, 1e-6)
-
-        sigmas = np.empty_like(centers)
-        sigmas[0]  = deltas[0]
-        sigmas[-1] = deltas[-1]
-        sigmas[1:-1] = 0.5 * (deltas[:-1] + deltas[1:])
-
-        # overlap factor
-        beta = 0.8
-        sigmas = beta * sigmas + 1e-6
-
-        return centers.tolist(), sigmas
+    # Future extension (README, "Robust fuzzy partitions"): a richer quantile
+    # partition than the `partition_quantile` trim in get_fuzzy_sets below --
+    # centres placed at quantiles, sigmas from neighbouring-centre spacing.
+    # Unused and unevaluated; kept here as the starting point for that work.
+    # def get_fuzzy_sets_adaptive_quantiles(self, X_column, feature_idx, feature_name='', plot=False):
+    #     n_sets = self.n_partitions
+    #     x = np.asarray(X_column)
+    #
+    #     if n_sets == 1:
+    #         c = np.median(x)
+    #         s = np.std(x) + 1e-6
+    #         return [c], np.array([s])
+    #
+    #     # centers at quantiles (more where data are)
+    #     qs = np.linspace(0, 1, n_sets)
+    #     centers = np.quantile(x, qs)
+    #
+    #     # sigma per center from neighbor spacing
+    #     # (avoid zero spacing when quantiles repeat due to ties)
+    #     centers = np.unique(centers)
+    #     if len(centers) < n_sets:
+    #         # fallback: spread evenly if too many ties
+    #         c_min, c_max = x.min(), x.max()
+    #         centers = np.linspace(c_min, c_max, n_sets)
+    #
+    #     centers = np.asarray(centers)
+    #     deltas = np.diff(centers)
+    #     deltas = np.maximum(deltas, 1e-6)
+    #
+    #     sigmas = np.empty_like(centers)
+    #     sigmas[0]  = deltas[0]
+    #     sigmas[-1] = deltas[-1]
+    #     sigmas[1:-1] = 0.5 * (deltas[:-1] + deltas[1:])
+    #
+    #     # overlap factor
+    #     beta = 0.8
+    #     sigmas = beta * sigmas + 1e-6
+    #
+    #     return centers.tolist(), sigmas
 
 
     def get_fuzzy_sets(self, X_column, feature_idx, feature_name='', plot=False):
@@ -220,7 +224,6 @@ class FuzzyDecisionTree:
         raw_class_masses = {label: float(w_raw[y == label].sum()) for label in self.classes_}
         if features_used is None:
             features_used=[]
-        #print(features_used)
         # Stop condition
         stop_condition = depth >= self.max_depth or w.sum() < self.min_samples or len(features_used) >= n_features
         if not stop_condition:
@@ -236,7 +239,6 @@ class FuzzyDecisionTree:
                 f_name = self._fname(f)
                 x_local_col = X[:, f]
                 centers, sigmas = self.get_fuzzy_sets(x_local_col, f, feature_name=f_name, plot=False)
-                #mu_sets = [gaussian(X[:, f], c, s) for c, s in zip(centers, sigmas)]
                 mu_sets = np.stack([gaussian(X[:, f], c, s) for c, s in zip(centers, sigmas)])
                 mu_sets = mu_sets / (mu_sets.sum(axis=0, keepdims=True) + 1e-12)
 
@@ -251,11 +253,6 @@ class FuzzyDecisionTree:
                         weighted_child_entropy += weight_ratio * child_entropy
                 # Information gain (higher is better)
                 score = parent_entropy - weighted_child_entropy
-                # if score < 0:
-                #     print()
-
-                # # Weighted variance over all sets approach
-                # score = np.sum([np.average((mu - mu.mean())**2, weights=w) for mu in mu_sets])
                 if score > best_score:
                     best_score = score
                     best_f = f
@@ -270,17 +267,9 @@ class FuzzyDecisionTree:
                                 for c, s in zip(best_centers, best_sigmas)
                                 ])  # shape (K, N)
             mu_sets = mu_sets / (mu_sets.sum(axis=0, keepdims=True) + 1e-12)
-            #winner = np.argmax(mu_sets, axis=0)  # dominant fuzzy set per sample
-               
-            
             # Prepare children nodes, keyed by fuzzy-set index
             children_nodes = []
             for i in range(self.n_partitions):
-                #mask = (winner == i)
-                #if not np.any(mask):
-                #    continue
-                #w_child = w * mu_sets[i]*mask
-
                 w_child = w * mu_sets[i]
                 if w_child.sum() > 1e-6:
                     new_features_used = features_used + [best_f]
@@ -321,10 +310,14 @@ class FuzzyDecisionTree:
         Bottom-up, coverage-preserving post-pruning.
 
         A low-support fuzzy child cannot simply be removed: that would leave
-        part of the fuzzy partition without a prediction. If a direct terminal
-        child fails ``min_support``, its entire split is collapsed to the
-        parent-majority leaf. Replacement statistics are calculated from exact
-        fuzzy class masses saved at fitting time.
+        part of the fuzzy partition without a prediction. So a split is only
+        examined once all of its children are leaves, and it is then collapsed
+        to the parent-majority leaf if the children all share one label
+        (a redundant split) or if any child fails ``min_support``. A split with
+        a surviving internal child is left alone, so a leaf below
+        ``min_support`` can outlive pruning elsewhere in the tree. Replacement
+        statistics are calculated from exact fuzzy class masses saved at
+        fitting time.
 
         ``min_confidence`` is recorded as a rule-quality diagnostic, rather
         than used for structural collapse. Local neighbourhoods are selected
@@ -513,19 +506,6 @@ class FuzzyDecisionTree:
             return [f"Set{i}" for i in range(n_partitions)]
 
 
-    # def get_global_label(self, feature_idx, local_center):
-    #     g_min, g_max = self.global_bounds[feature_idx]
-        
-    #     # Calculate where this local center sits on the 0 to 1 global scale
-    #     # (e.g., 1.2 bar in a 0-30 bar range is ~0.04)
-    #     relative_pos = (local_center - g_min) / (g_max - g_min + 1e-12)
-
-    #     if relative_pos < 0.33:
-    #         return "Low"
-    #     elif relative_pos < 0.66:
-    #         return "Medium"
-    #     else:
-    #         return "High"
 
 
     def extract_rules_simple(self, feature_names=None):
@@ -626,10 +606,6 @@ class FuzzyDecisionTree:
             
             return final_node_rules
 
-        #root_to_leaf_rules= self.extract_rules_simple(feature_names)
-        #dot = plot_fuzzy_tree(self.root, feature_names=self.feature_names)
-        #dot.render("newfuzzy_tree_pruned", view=True)
-        
         # Initial call
         structured_rules = walk(self.root, [])
         if len(structured_rules.keys())==1 and not len(list(structured_rules.values())[0][0][0]):
@@ -644,7 +620,7 @@ class FuzzyDecisionTree:
                 conf = mass / (supp + 1e-12)
                 stats = f"support={supp:.2f}, confidence={conf:.2f}"
                 if query is not None:
-                    stats += f", fires={fire:.17g}"
+                    stats += f", fires={fire:.6f}"
                 rules.append(f"IF {' AND '.join(conds)} THEN class = {label} [{stats}]")
                 
         return rules
@@ -682,6 +658,11 @@ class FuzzyDecisionTree:
         return saliency / peak if peak > 0 else saliency
 
     def plot_feature_memberships(self, feature_name, scaler=None, margin = 3, name=''):
+        """Plot the fuzzy sets of one surviving split feature.
+
+        (Writes to a hardcoded ``./outputs/plots/memberships/``; the directory
+        must already exist.)
+        """
         import numpy as np
         import matplotlib
         matplotlib.use('Agg')
@@ -756,21 +737,3 @@ class FuzzyDecisionTree:
         return dot
 
 
-
-# # =============================
-# # Example usage
-# # =============================
-# X, y = load_iris(return_X_y=True)
-# feature_names = [f"x{i}" for i in range(X.shape[1])]
-
-# tree = FuzzyDecisionTree(max_depth=3)
-
-# # ---- ONE LINE TRAIN ----
-# tree.fit(X, y)
-
-# # ---- FUZZY RULES AS TEXT ----
-# rules = tree.extract_rules(feature_names)
-
-# for i, r in enumerate(rules, 1):
-#     print(f"\nRule {i}:")
-#     print(r)

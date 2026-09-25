@@ -7,6 +7,11 @@ import numpy as np
 from fuzzy_tree import FuzzyDecisionTree, FuzzyNode
 
 
+# Rule strengths are printed to six decimals, so scores reconstructed from the
+# printed text agree with predict_proba() to ~1e-6, not to machine precision.
+PRINTED = dict(atol=1e-6)
+
+
 def printed_scores(tree, query):
     scores = {c: 0.0 for c in tree.classes_}
     for rule in tree.extract_rules(query=query):
@@ -33,7 +38,7 @@ class RuleReportingTests(unittest.TestCase):
         expected = np.array([memberships[2], memberships[0]+memberships[1]])
         expected /= expected.sum()
         np.testing.assert_allclose(list(tree.predict_proba([query])[0].values()), expected)
-        np.testing.assert_allclose(printed_scores(tree, query), expected)
+        np.testing.assert_allclose(printed_scores(tree, query), expected, **PRINTED)
         self.assertIn('confidence=0.63', tree.extract_rules(query=query)[0])
 
     def test_fitted_trees_reconstruct_and_track_only_surviving_features(self):
@@ -53,12 +58,12 @@ class RuleReportingTests(unittest.TestCase):
             self.assertEqual(set(tree.fuzzy_params), used)
             for query in X[:10]:
                 expected = list(tree.predict_proba([query])[0].values())
-                np.testing.assert_allclose(printed_scores(tree, query), expected, atol=1e-12)
+                np.testing.assert_allclose(printed_scores(tree, query), expected, **PRINTED)
             tree.max_depth = 0
             tree.fit(X, y)
             self.assertEqual(tree.fuzzy_params, {})
             np.testing.assert_allclose(printed_scores(tree, X[0]),
-                                       list(tree.predict_proba(X[:1])[0].values()))
+                                       list(tree.predict_proba(X[:1])[0].values()), **PRINTED)
 
     def test_no_activation_is_not_an_arbitrary_class(self):
         X = np.tile([[-1.], [1.]], (50, 1))

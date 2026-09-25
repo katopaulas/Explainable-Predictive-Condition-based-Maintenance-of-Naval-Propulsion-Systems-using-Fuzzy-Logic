@@ -38,18 +38,6 @@ class FuzzyLayer(torch.nn.Module):
     def from_dimensions(cls, size_in, size_out, trainable=True):
         return cls(torch.randn(size_out, size_in), torch.ones(size_out, size_in), trainable)
 
-    @classmethod
-    def from_centers(cls, initial_centers, trainable=True):
-        initial_centers = torch.FloatTensor(np.multiply(-1, initial_centers))
-        initial_scales = torch.ones_like(initial_centers)
-        return cls(initial_centers, initial_scales, trainable)
-
-    @classmethod
-    def from_centers_and_scales(cls, initial_centers, initial_scales, trainable=True):
-        initial_centers = torch.FloatTensor(np.multiply(-1, initial_centers))
-        initial_scales = torch.FloatTensor(initial_scales)
-        return cls(initial_centers, initial_scales, trainable)
-
     def get_scales_and_rot(self):
         A = torch.diag_embed(self.scales)
         for i, r in enumerate(self.rots):
@@ -65,28 +53,6 @@ class FuzzyLayer(torch.nn.Module):
         distance = torch.norm(torch.matmul(transform, extended_input)[:, :self.size_in], p=2, dim=1)
         return torch.exp(-distance).T
 
-    def set_requires_grad_rot(self, requires_grad):
-        for i in range(self.size_in - 1):
-            self.rots[i].requires_grad = requires_grad
-
-    def set_requires_grad_scales(self, requires_grad):
-        self.scales.requires_grad = requires_grad
-
-    def set_requires_grad_centroids(self, requires_grad):
-        self.centroids.requires_grad = requires_grad
-
-    def get_centroids(self):
-        lh = self.get_scales_and_rot()
-        rh = self.centroids.squeeze(-1)
-        return torch.linalg.solve(lh, -rh)
-
-    def get_transformation_matrix_eigenvals(self):
-        return torch.linalg.eigvals(self.get_scales_and_rot())
-
-    def get_transformation_matrix(self):
-        A = torch.cat((self.get_scales_and_rot(), self.centroids), 2)
-        return torch.cat([A, self.c_r], 1)
-
 
 class DefuzzyLinearLayer(torch.nn.Module):
     def __init__(self, initial_consequences, trainable, with_norm):
@@ -98,10 +64,6 @@ class DefuzzyLinearLayer(torch.nn.Module):
     @classmethod
     def from_dimensions(cls, size_in, size_out, trainable=True, with_norm=True):
         return cls(torch.rand(size_out, size_in), trainable, with_norm)
-
-    @classmethod
-    def from_array(cls, initial_array, trainable=True, with_norm=True):
-        return cls(torch.FloatTensor(np.array(initial_array)), trainable, with_norm)
 
     def forward(self, input: Tensor) -> Tensor:
         consequences = self.Z.expand(input.shape[0], self.size_out, self.size_in)
