@@ -1,6 +1,6 @@
 # Explainable fuzzy predictive maintenance — minimal reference
 
-Minimal research demo accompanying *Explainable Neuro-Fuzzy Prediction for Trustworthy Decision-Making in Maritime*. **Accepted in European Signal Processing Conference (EUSIPCO).**
+Minimal research demo accompanying *Explainable Neuro-Fuzzy Prediction for Trustworthy Decision-Making in Maritime*. **Accepted in European Signal Processing Conference (EUSIPCO) 2026.**
 
 
 
